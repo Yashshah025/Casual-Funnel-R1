@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Acme Store - CausalFunnel Tracking Demo</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Injected Tracker Script -->
+  <script src="../tracker.js" data-endpoint="http://localhost:5000/api/events"></script>
+</head>
+<body>
+  <header>
+    <a href="index.html" class="logo">🛍️ Acme Store</a>
+    <nav>
+      <a href="index.html" class="active">Home</a>
+      <a href="#trending">Trending</a>
+      <a href="#bestsellers">Best Sellers</a>
+      <a href="product.html">Featured Camera</a>
+      <a href="cart.html" id="nav-cart-link">Cart <span id="cart-count" class="cart-badge">0</span></a>
+    </nav>
+    <div id="session-display" class="session-badge">Session: Initializing...</div>
+  </header>
+
+  <section class="hero">
+    <h1>Premium Tech &amp; Creative Gear</h1>
+    <p>Discover award-winning audio, mirrorless cameras, and workspace accessories engineered for creators and professionals.</p>
+    <a href="product.html" class="btn btn-primary" id="hero-cta-btn">Explore #1 Best Seller &rarr;</a>
+    <a href="cart.html" class="btn btn-primary" style="margin-left: 10px; background-color: #f1f5f9; color: #4338ca;">View Shopping Cart 🛒</a>
+    <button onclick="resetMySession()" class="btn btn-primary" style="margin-left: 10px; background-color: rgba(255,255,255,0.15); color: #ffffff; border: 1px solid rgba(255,255,255,0.3);">Switch Guest</button>
+  </section>
+
+  <div class="container">
+    <!-- Promotional Trust Value Banner -->
+    <div class="promo-banner">
+      <div class="promo-item">
+        <span class="promo-icon">🚚</span>
+        <div>
+          <strong>Free Express Delivery</strong>
+          <p>On all domestic orders over $75</p>
+        </div>
+      </div>
+      <div class="promo-item">
+        <span class="promo-icon">🛡️</span>
+        <div>
+          <strong>2-Year Warranty</strong>
+          <p>Comprehensive parts &amp; labor guarantee</p>
+        </div>
+      </div>
+      <div class="promo-item">
+        <span class="promo-icon">🔄</span>
+        <div>
+          <strong>30-Day Easy Returns</strong>
+          <p>Zero restocking fee, 100% money back</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 1. BEST SELLERS SECTION -->
+    <div id="bestsellers" style="margin-bottom: 4rem;">
+      <h2 class="section-title">🔥 Top Best Sellers</h2>
+      <p class="section-subtitle">Our most popular gear loved by creators and tech enthusiasts worldwide.</p>
+      
+      <div class="product-grid">
+        <!-- Best Seller 1 -->
+        <div class="product-card">
+          <span class="product-badge-tag">#1 BEST SELLER</span>
+          <div class="product-image">📷</div>
+          <div class="product-details">
+            <h3 class="product-title">Vintage 4K Retro Camera</h3>
+            <p class="product-desc">Mirrorless 4K camera with interchangeable 35mm lens and aluminum chassis.</p>
+            <p class="product-price">$499.00</p>
+            <div style="display: flex; gap: 0.5rem;">
+              <a href="product.html" class="btn btn-accent" style="flex: 1; text-align: center;" id="btn-view-camera">Details &rarr;</a>
+              <button class="btn" style="background: #eef2ff; color: #4338ca;" onclick="addToCart('cam-4k', 'Vintage 4K Retro Camera', 499.00, '📷', this)">+ Cart</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Best Seller 2 -->
+        <div class="product-card">
+          <span class="product-badge-tag">POPULAR</span>
+          <div class="product-image">🔊</div>
+          <div class="product-details">
+            <h3 class="product-title">Studio Soundbar Pro</h3>
+            <p class="product-desc">Dolby Atmos spatial audio with wireless subwoofer and Bluetooth 5.3.</p>
+            <p class="product-price">$249.00</p>
+            <button class="btn btn-accent" id="btn-add-soundbar" onclick="addToCart('snd-pro', 'Studio Soundbar Pro', 249.00, '🔊', this)">Add to Cart</button>
+          </div>
+        </div>
+
+        <!-- Best Seller 3 -->
+        <div class="product-card">
+          <span class="product-badge-tag">TOP RATED</span>
+          <div class="product-image">🏠</div>
+          <div class="product-details">
+            <h3 class="product-title">Smart Home Hub Display</h3>
+            <p class="product-desc">8-inch HD smart touchscreen display with voice assistant & camera.</p>
+            <p class="product-price">$119.00</p>
+            <button class="btn btn-accent" id="btn-add-hub" onclick="addToCart('sm-hub', 'Smart Home Hub Display', 119.00, '🏠', this)">Add to Cart</button>
+          </div>
+        </div>
+
+        <!-- Best Seller 4 -->
+        <div class="product-card">
+          <span class="product-badge-tag">TRENDING</span>
+          <div class="product-image">⚡</div>
+          <div class="product-details">
+            <h3 class="product-title">3-in-1 Fast Wireless Charger</h3>
+            <p class="product-desc">Simultaneously powers phone, smartwatch, and earbuds with MagSafe.</p>
+            <p class="product-price">$49.99</p>
+            <button class="btn btn-accent" id="btn-add-charger" onclick="addToCart('chg-3in1', '3-in-1 Fast Wireless Charger', 49.99, '⚡', this)">Add to Cart</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. TRENDING PRODUCTS SECTION -->
+    <div id="trending">
+      <h2 class="section-title">✨ Trending Products</h2>
+      <p class="section-subtitle">Hand-picked tech accessories gaining traction this week.</p>
+      
+      <div class="product-grid">
+        <!-- Trending 1 -->
+        <div class="product-card">
+          <div class="product-image">🎧</div>
+          <div class="product-details">
+            <h3 class="product-title">Noise Canceling Headphones</h3>
+            <p class="product-desc">Active 40dB hybrid noise canceling with 60-hour ultra battery life.</p>
+            <p class="product-price">$199.99</p>
+            <button class="btn btn-accent" id="btn-add-headphones" onclick="addToCart('hp-nc', 'Noise Canceling Headphones', 199.99, '🎧', this)">Add to Cart</button>
+          </div>
+        </div>
+
+        <!-- Trending 2 -->
+        <div class="product-card">
+          <div class="product-image">⌚</div>
+          <div class="product-details">
+            <h3 class="product-title">Smart Fitness Watch</h3>
+            <p class="product-desc">AMOLED display, 24/7 heart rate, SpO2 sensor, and 5ATM water resistance.</p>
+            <p class="product-price">$149.00</p>
+            <button class="btn btn-accent" id="btn-add-watch" onclick="addToCart('sw-fit', 'Smart Fitness Watch', 149.00, '⌚', this)">Add to Cart</button>
+          </div>
+        </div>
+
+        <!-- Trending 3 -->
+        <div class="product-card">
+          <div class="product-image">⌨️</div>
+          <div class="product-details">
+            <h3 class="product-title">Mechanical Wireless Keyboard</h3>
+            <p class="product-desc">Custom hot-swappable tactile switches with customizable RGB backlighting.</p>
+            <p class="product-price">$129.50</p>
+            <button class="btn btn-accent" id="btn-add-keyboard" onclick="addToCart('kb-mech', 'Mechanical Wireless Keyboard', 129.50, '⌨️', this)">Add to Cart</button>
+          </div>
+        </div>
+
+        <!-- Trending 4 -->
+        <div class="product-card">
+          <div class="product-image">🖱️</div>
+          <div class="product-details">
+            <h3 class="product-title">Ergonomic Gaming Mouse</h3>
+            <p class="product-desc">26,000 DPI optical sensor, ultra-lightweight 58g honeycomb shell.</p>
+            <p class="product-price">$79.99</p>
+            <button class="btn btn-accent" id="btn-add-mouse" onclick="addToCart('ms-ergo', 'Ergonomic Gaming Mouse', 79.99, '🖱️', this)">Add to Cart</button>
+          </div>
+        </div>
+
+        <!-- Trending 5 -->
+        <div class="product-card">
+          <div class="product-image">🖥️</div>
+          <div class="product-details">
+            <h3 class="product-title">34" Curved 4K Monitor</h3>
+            <p class="product-desc">144Hz ultra-wide IPS panel with USB-C 90W power delivery hub.</p>
+            <p class="product-price">$649.00</p>
+            <button class="btn btn-accent" id="btn-add-monitor" onclick="addToCart('mon-34', '34 Curved 4K Monitor', 649.00, '🖥️', this)">Add to Cart</button>
+          </div>
+        </div>
+
+        <!-- Trending 6 -->
+        <div class="product-card">
+          <div class="product-image">🎙️</div>
+          <div class="product-details">
+            <h3 class="product-title">USB Studio Microphone</h3>
+            <p class="product-desc">Cardioid polar pattern condenser mic with built-in pop filter and mute touch.</p>
+            <p class="product-price">$99.00</p>
+            <button class="btn btn-accent" id="btn-add-mic" onclick="addToCart('mic-usb', 'USB Studio Microphone', 99.00, '🎙️', this)">Add to Cart</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script>
+    // Cart persistence helper
+    function getCart() {
+      try {
+        return JSON.parse(localStorage.getItem('cf_cart')) || [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function saveCart(cart) {
+      localStorage.setItem('cf_cart', JSON.stringify(cart));
+      updateNavBadge();
+    }
+
+    function updateNavBadge() {
+      const cart = getCart();
+      const count = cart.reduce((sum, item) => sum + item.qty, 0);
+      const badge = document.getElementById('cart-count');
+      if (badge) badge.innerText = count;
+    }
+
+    function showToast(message, type = 'success', icon = '🛒') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast toast-${type}`;
+      toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.classList.add('hide');
+        setTimeout(() => toast.remove(), 300);
+      }, 2500);
+    }
+
+    function addToCart(id, name, price, icon, btn) {
+      const cart = getCart();
+      const existing = cart.find(item => item.id === id);
+      if (existing) {
+        existing.qty += 1;
+      } else {
+        cart.push({ id, name, price, icon, qty: 1 });
+      }
+      saveCart(cart);
+
+      // Button feedback
+      const originalText = btn.innerText;
+      btn.classList.add('btn-added');
+      btn.innerText = 'Added! ✓';
+      setTimeout(() => {
+        btn.classList.remove('btn-added');
+        btn.innerText = originalText;
+      }, 1200);
+
+      // Pulse badge
+      const badge = document.getElementById('cart-count');
+      if (badge) {
+        badge.classList.add('bump');
+        setTimeout(() => badge.classList.remove('bump'), 200);
+      }
+
+      showToast(`Added <strong>${name}</strong> to cart!`, 'success', icon);
+    }
+
+    // Init
+    updateNavBadge();
+
+    setTimeout(() => {
+      if (window.CFTracker) {
+        document.getElementById('session-display').innerText = '👤 Guest: #' + window.CFTracker.getSessionId().substring(5, 13);
+      }
+    }, 200);
+
+    function resetMySession() {
+      if (window.CFTracker) {
+        const newId = window.CFTracker.resetSession();
+        document.getElementById('session-display').innerText = '👤 Guest: #' + newId.substring(5, 13);
+        showToast('Switched to new guest profile!', 'success', '👤');
+        setTimeout(() => window.location.reload(), 800);
+      }
+    }
+  </script>
+</body>
+</html>

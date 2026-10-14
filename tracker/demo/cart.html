@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your Cart - Acme Store</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Injected Tracker Script -->
+  <script src="../tracker.js" data-endpoint="http://localhost:5000/api/events"></script>
+</head>
+<body>
+  <header>
+    <a href="index.html" class="logo">🛍️ Acme Store</a>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="product.html">Featured Item</a>
+      <a href="cart.html" class="active" id="nav-cart-link">Cart <span id="cart-count" class="cart-badge">0</span></a>
+    </nav>
+    <div id="session-display" class="session-badge">Session: Initializing...</div>
+  </header>
+
+  <div class="container" style="margin-top: 2rem;">
+    <p style="margin-bottom: 1.25rem;">
+      <a href="index.html" style="color: #4f46e5; text-decoration: none; font-weight: 500;">&larr; Continue Shopping</a>
+    </p>
+
+    <h1 style="font-size: 2rem; font-weight: 800; margin-bottom: 0.5rem; color: #0f172a;">Shopping Cart</h1>
+    <p style="color: #64748b; margin-bottom: 2rem;">Review your selected items before proceeding to secure checkout.</p>
+
+    <div class="cart-layout">
+      
+      <!-- Cart Items Table / List -->
+      <div class="cart-items-box">
+        <div id="cart-items-container">
+          <!-- Rendered dynamically -->
+        </div>
+
+        <div id="empty-cart-view" style="display: none; text-align: center; padding: 3rem 1rem;">
+          <div style="font-size: 4rem; margin-bottom: 1rem;">🛒</div>
+          <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem;">Your cart is currently empty</h3>
+          <p style="color: #64748b; margin-bottom: 1.5rem;">Looks like you haven't added any products yet.</p>
+          <a href="index.html" class="btn btn-accent" id="btn-browse-products">Explore Trending Products &rarr;</a>
+        </div>
+      </div>
+
+      <!-- Order Summary Card -->
+      <div class="order-summary-box">
+        <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 1.25rem;">Order Summary</h3>
+        
+        <div class="summary-row">
+          <span>Subtotal</span>
+          <span id="summary-subtotal" style="font-weight: 600;">$0.00</span>
+        </div>
+        <div class="summary-row">
+          <span>Estimated Tax (8%)</span>
+          <span id="summary-tax">$0.00</span>
+        </div>
+        <div class="summary-row">
+          <span>Standard Shipping</span>
+          <span style="color: #059669; font-weight: 600;">FREE</span>
+        </div>
+
+        <div class="summary-row summary-total">
+          <span>Total</span>
+          <span id="summary-total">$0.00</span>
+        </div>
+
+        <button
+          id="btn-checkout"
+          class="btn btn-accent"
+          style="width: 100%; margin-top: 1.5rem; padding: 1rem; font-size: 1.05rem;"
+          onclick="handleCheckout(this)"
+        >
+          Proceed to Checkout &rarr;
+        </button>
+
+        <p style="text-align: center; font-size: 0.8rem; color: #94a3b8; margin-top: 1rem;">
+          🔒 Secure 256-Bit SSL Encrypted Checkout
+        </p>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script>
+    // Load Cart from localStorage or provide dummy default if empty
+    function getStoredCart() {
+      const raw = localStorage.getItem('cf_cart');
+      if (raw) {
+        try { return JSON.parse(raw); } catch (e) {}
+      }
+      // Initial items if user opens cart directly
+      return [
+        { id: 'cam-4k', name: 'Vintage 4K Retro Camera', price: 499.00, icon: '📷', qty: 1 },
+        { id: 'hp-nc', name: 'Noise Canceling Headphones', price: 199.99, icon: '🎧', qty: 1 }
+      ];
+    }
+
+    let cart = getStoredCart();
+
+    function saveCart() {
+      localStorage.setItem('cf_cart', JSON.stringify(cart));
+      updateNavBadge();
+    }
+
+    function updateNavBadge() {
+      const totalQty = cart.reduce((sum, item) => sum + item.qty, 0);
+      const badge = document.getElementById('cart-count');
+      if (badge) badge.innerText = totalQty;
+    }
+
+    function renderCart() {
+      const container = document.getElementById('cart-items-container');
+      const emptyView = document.getElementById('empty-cart-view');
+      const checkoutBtn = document.getElementById('btn-checkout');
+
+      if (!cart || cart.length === 0) {
+        container.style.display = 'none';
+        emptyView.style.display = 'block';
+        if (checkoutBtn) checkoutBtn.disabled = true;
+        updateSummary(0);
+        return;
+      }
+
+      container.style.display = 'block';
+      emptyView.style.display = 'none';
+      if (checkoutBtn) checkoutBtn.disabled = false;
+
+      let html = '';
+      let subtotal = 0;
+
+      cart.forEach((item, index) => {
+        const itemTotal = item.price * item.qty;
+        subtotal += itemTotal;
+
+        html += `
+          <div class="cart-item-row" id="cart-item-${item.id}">
+            <div class="cart-item-info">
+              <div class="cart-item-icon">${item.icon || '📦'}</div>
+              <div>
+                <h4 style="font-weight: 600; font-size: 1rem; color: #0f172a;">${item.name}</h4>
+                <p style="font-size: 0.85rem; color: #059669; font-weight: 700;">$${item.price.toFixed(2)}</p>
+              </div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 1.5rem;">
+              <div class="qty-control">
+                <button class="qty-btn" id="btn-dec-${index}" onclick="changeQty(${index}, -1)">-</button>
+                <span style="font-weight: 600; font-size: 0.95rem; min-width: 20px; text-align: center;">${item.qty}</span>
+                <button class="qty-btn" id="btn-inc-${index}" onclick="changeQty(${index}, 1)">+</button>
+              </div>
+
+              <div style="font-weight: 700; font-size: 1rem; min-width: 80px; text-align: right;">
+                $${itemTotal.toFixed(2)}
+              </div>
+
+              <button
+                class="btn"
+                id="btn-remove-${index}"
+                style="padding: 0.4rem 0.75rem; background: #fee2e2; color: #dc2626; font-size: 0.8rem; border-radius: 6px;"
+                onclick="removeItem(${index})"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+      updateSummary(subtotal);
+    }
+
+    function updateSummary(subtotal) {
+      const tax = subtotal * 0.08;
+      const total = subtotal + tax;
+
+      document.getElementById('summary-subtotal').innerText = `$${subtotal.toFixed(2)}`;
+      document.getElementById('summary-tax').innerText = `$${tax.toFixed(2)}`;
+      document.getElementById('summary-total').innerText = `$${total.toFixed(2)}`;
+    }
+
+    function changeQty(index, delta) {
+      if (!cart[index]) return;
+      cart[index].qty += delta;
+      if (cart[index].qty <= 0) {
+        cart.splice(index, 1);
+        showToast('Item removed from cart', 'default', '🗑️');
+      }
+      saveCart();
+      renderCart();
+    }
+
+    function removeItem(index) {
+      const name = cart[index]?.name || 'Item';
+      cart.splice(index, 1);
+      saveCart();
+      renderCart();
+      showToast(`Removed <strong>${name}</strong> from cart`, 'default', '🗑️');
+    }
+
+    function handleCheckout(btn) {
+      btn.classList.add('btn-added');
+      btn.innerText = 'Order Placed! Thank you! ✓';
+      showToast('🎉 Order placed successfully! Tracking event dispatched.', 'success', '🚀');
+      setTimeout(() => {
+        cart = [];
+        saveCart();
+        renderCart();
+      }, 2000);
+    }
+
+    function showToast(message, type = 'success', icon = '🛒') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast toast-${type}`;
+      toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.classList.add('hide');
+        setTimeout(() => toast.remove(), 300);
+      }, 2500);
+    }
+
+    // Init
+    updateNavBadge();
+    renderCart();
+
+    setTimeout(() => {
+      if (window.CFTracker) {
+        document.getElementById('session-display').innerText = '👤 Guest: #' + window.CFTracker.getSessionId().substring(5, 13);
+      }
+    }, 200);
+  </script>
+</body>
+</html>

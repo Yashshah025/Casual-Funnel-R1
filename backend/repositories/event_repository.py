@@ -1,0 +1,53 @@
+from database.connection import mongo_manager
+from bson import ObjectId
+
+class EventRepository:
+    def __init__(self):
+        self._collection = None
+
+    @property
+    def collection(self):
+        if self._collection is None:
+            self._collection = mongo_manager.get_collection("events")
+        return self._collection
+
+    def insert(self, event_doc):
+        """Insert a single event document."""
+        result = self.collection.insert_one(event_doc)
+        return str(result.inserted_id)
+
+    def insert_batch(self, event_docs):
+        """Insert multiple event documents."""
+        if not event_docs:
+            return []
+        result = self.collection.insert_many(event_docs)
+        return [str(idx) for idx in result.inserted_ids]
+
+    def find_by_session_id(self, session_id):
+        """Find all events for a given session sorted chronologically."""
+        return list(self.collection.find({"session_id": session_id}).sort("timestamp", 1))
+
+    def find_clicks_by_url(self, url):
+        """Find click events for a specific URL."""
+        query = {
+            "url": url,
+            "event_type": "click",
+            "coordinates": {"$ne": None}
+        }
+        projection = {"coordinates": 1, "viewport": 1, "timestamp": 1, "_id": 1}
+        return list(self.collection.find(query, projection).sort("timestamp", -1))
+
+    def get_distinct_urls(self):
+        """Fetch distinct tracked URLs."""
+        return self.collection.distinct("url")
+
+    def count_by_type(self, event_type=None):
+        """Count events matching event_type or total."""
+        query = {"event_type": event_type} if event_type else {}
+        return self.collection.count_documents(query)
+
+    def count_distinct_sessions(self):
+        """Count total distinct session IDs."""
+        return len(self.collection.distinct("session_id"))
+
+event_repository = EventRepository()
