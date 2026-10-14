@@ -1,4 +1,5 @@
 import math
+import uuid
 from urllib.parse import urlparse, urlunparse
 from datetime import datetime, timezone, timedelta
 from core.exceptions import ValidationError
@@ -7,7 +8,7 @@ from repositories.session_repository import session_repository
 from core.logger import logger
 
 ALLOWED_EVENT_TYPES = {'page_view', 'click'}
-MAX_BATCH_SIZE = 100
+MAX_BATCH_SIZE = 50
 
 def normalize_url(raw_url):
     """
@@ -38,9 +39,10 @@ class IngestionService:
     def validate_and_prepare_event(raw_data):
         """
         Strictly validates incoming event payload without hiding errors:
-        - Rejects malformed timestamps explicitly
+        - Rejects timestamps without explicit timezone
         - Rejects negative, NaN, or infinite coordinates
         - Normalizes URLs
+        - Captures stable event_id for idempotency
         - Captures both client_timestamp and server_ingested_at
         - Stores normalized coordinate percentages
         """
@@ -50,6 +52,7 @@ class IngestionService:
         session_id = raw_data.get('session_id')
         event_type = raw_data.get('event_type')
         raw_url = raw_data.get('url')
+        event_id = raw_data.get('event_id') or f"evt_{uuid.uuid4().hex}"
 
         if not session_id or not isinstance(session_id, str) or not session_id.strip():
             raise ValidationError("Missing or empty field: 'session_id'")
@@ -59,7 +62,7 @@ class IngestionService:
 
         url = normalize_url(raw_url)
 
-        # Timestamp validation (Strict parsing; no silent fallback)
+        # Timestamp validation (Strict parsing; require explicit timezone)
         raw_ts = raw_data.get('timestamp')
         if not raw_ts or not isinstance(raw_ts, str):
             raise ValidationError("Field 'timestamp' (ISO-8601 string) is required")
@@ -69,6 +72,9 @@ class IngestionService:
             client_timestamp = datetime.fromisoformat(clean_ts)
         except Exception as e:
             raise ValidationError(f"Malformed ISO-8601 timestamp '{raw_ts}': {str(e)}")
+
+        if client_timestamp.tzinfo is None:
+            raise ValidationError(f"Timestamp '{raw_ts}' must include an explicit timezone offset (e.g. 'Z' or '+00:00')")
 
         server_now = datetime.now(timezone.utc)
 
@@ -143,6 +149,7 @@ class IngestionService:
                     document_bounds = {"width": int(dw), "height": int(dh)}
 
         document = {
+            "event_id": event_id,
             "session_id": session_id.strip(),
             "event_type": event_type,
             "url": url,
@@ -158,12 +165,31 @@ class IngestionService:
 
     @staticmethod
     def process_and_save_event(raw_data):
-        """Single event ingestion."""
+        """
+        Single event ingestion with idempotency and self-healing reconciliation.
+        """
         doc = IngestionService.validate_and_prepare_event(raw_data)
+        event_id_val = doc.get("event_id")
+
+        # Idempotency check: if event_id already exists, return existing without re-counting
+        existing = event_repository.find_by_event_id(event_id_val)
+        if existing:
+            logger.info(f"Duplicate event detected for event_id [{event_id_val}]. Returning idempotently.")
+            return {
+                "event_id": str(existing["_id"]),
+                "session_id": doc["session_id"],
+                "event_type": doc["event_type"],
+                "duplicate": True
+            }
+
         event_id = event_repository.insert(doc)
         
-        # Maintain materialized session summary incrementally
-        session_repository.upsert_session_summary(doc)
+        # Maintain materialized session summary incrementally with fallback reconciliation
+        try:
+            session_repository.upsert_session_summary(doc)
+        except Exception as e:
+            logger.warning(f"Session summary update error for session [{doc['session_id']}]: {e}. Triggering targeted reconciliation...")
+            session_repository.reconcile_session(doc["session_id"])
 
         logger.info(f"Ingested event [{doc['event_type']}] for session [{doc['session_id'][:12]}...]")
         return {"event_id": event_id, "session_id": doc["session_id"], "event_type": doc["event_type"]}
@@ -171,8 +197,8 @@ class IngestionService:
     @staticmethod
     def process_and_save_batch(raw_events):
         """
-        True bulk event ingestion using MongoDB insert_many.
-        Validates all items and maintains session summaries.
+        True bulk event ingestion using MongoDB insert_many with batch idempotency
+        and targeted session reconciliation.
         """
         if not isinstance(raw_events, list):
             raise ValidationError("Batch payload must be an array of event objects")
@@ -191,13 +217,28 @@ class IngestionService:
             except ValidationError as ve:
                 raise ValidationError(f"Batch item [{idx}] invalid: {ve.message}")
 
-        # Bulk insert into MongoDB
-        event_ids = event_repository.insert_batch(prepared_docs)
+        # Idempotency check: filter out already-ingested events by event_id
+        incoming_ids = [d["event_id"] for d in prepared_docs if d.get("event_id")]
+        existing_ids = event_repository.find_existing_event_ids(incoming_ids)
+        new_docs = [d for d in prepared_docs if d.get("event_id") not in existing_ids]
 
-        # Bulk maintain materialized session summaries
-        session_repository.upsert_session_summaries_bulk(prepared_docs)
+        if new_docs:
+            event_ids = event_repository.insert_batch(new_docs)
+            try:
+                session_repository.upsert_session_summaries_bulk(new_docs)
+            except Exception as e:
+                logger.warning(f"Batch session summary update error: {e}. Reconciling affected sessions...")
+                affected_sessions = {d["session_id"] for d in new_docs}
+                for s_id in affected_sessions:
+                    session_repository.reconcile_session(s_id)
+        else:
+            event_ids = []
 
-        logger.info(f"Batch ingested {len(prepared_docs)} events in bulk via insert_many.")
-        return {"inserted_count": len(event_ids), "event_ids": event_ids}
+        logger.info(f"Batch processed: {len(new_docs)} new events ingested, {len(existing_ids)} duplicates skipped.")
+        return {
+            "inserted_count": len(new_docs),
+            "duplicates_skipped": len(existing_ids),
+            "event_ids": event_ids
+        }
 
 ingestion_service = IngestionService()

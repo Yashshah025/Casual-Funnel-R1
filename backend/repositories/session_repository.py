@@ -86,6 +86,64 @@ class SessionRepository:
 
         return {"sessions": sessions, "total_count": total_count}
 
+    def count_total_sessions(self):
+        """Count total unique sessions directly from indexed materialized collection in O(1)."""
+        return self.sessions_col.count_documents({})
+
+    def reconcile_session(self, session_id):
+        """
+        Recompute summary for a single session from raw events collection.
+        Provides targeted self-healing if a summary write encounters an issue.
+        """
+        pipeline = [
+            {"$match": {"session_id": session_id}},
+            {
+                "$group": {
+                    "_id": "$session_id",
+                    "total_events": {"$sum": 1},
+                    "page_views": {"$sum": {"$cond": [{"$eq": ["$event_type", "page_view"]}, 1, 0]}},
+                    "clicks": {"$sum": {"$cond": [{"$eq": ["$event_type", "click"]}, 1, 0]}},
+                    "started_at": {"$min": "$timestamp"},
+                    "last_active": {"$max": "$timestamp"},
+                    "pages_visited": {"$addToSet": "$url"}
+                }
+            }
+        ]
+        results = list(self.events_col.aggregate(pipeline))
+        if results:
+            summary = results[0]
+            summary["session_id"] = summary["_id"]
+            self.sessions_col.replace_one({"_id": session_id}, summary, upsert=True)
+            return summary
+        else:
+            self.sessions_col.delete_one({"_id": session_id})
+            return None
+
+    def rebuild_all_session_summaries(self):
+        """
+        Recalculates all session summaries from the events collection.
+        Provides an administrative reconciliation/recovery path.
+        """
+        pipeline = [
+            {
+                "$group": {
+                    "_id": "$session_id",
+                    "total_events": {"$sum": 1},
+                    "page_views": {"$sum": {"$cond": [{"$eq": ["$event_type", "page_view"]}, 1, 0]}},
+                    "clicks": {"$sum": {"$cond": [{"$eq": ["$event_type", "click"]}, 1, 0]}},
+                    "started_at": {"$min": "$timestamp"},
+                    "last_active": {"$max": "$timestamp"},
+                    "pages_visited": {"$addToSet": "$url"}
+                }
+            }
+        ]
+        results = list(self.events_col.aggregate(pipeline))
+        for r in results:
+            r["session_id"] = r["_id"]
+            self.sessions_col.replace_one({"_id": r["_id"]}, r, upsert=True)
+        logger.info(f"Reconciled/rebuilt {len(results)} session summaries.")
+        return len(results)
+
     def sync_materialized_sessions_if_needed(self):
         """
         Utility to populate/rebuild session summaries from existing event documents
@@ -96,24 +154,7 @@ class SessionRepository:
             event_count = self.events_col.count_documents({})
             if session_count == 0 and event_count > 0:
                 logger.info("Materializing session summaries from existing event collection...")
-                pipeline = [
-                    {
-                        "$group": {
-                            "_id": "$session_id",
-                            "total_events": {"$sum": 1},
-                            "page_views": {"$sum": {"$cond": [{"$eq": ["$event_type", "page_view"]}, 1, 0]}},
-                            "clicks": {"$sum": {"$cond": [{"$eq": ["$event_type", "click"]}, 1, 0]}},
-                            "started_at": {"$min": "$timestamp"},
-                            "last_active": {"$max": "$timestamp"},
-                            "pages_visited": {"$addToSet": "$url"}
-                        }
-                    }
-                ]
-                results = list(self.events_col.aggregate(pipeline))
-                for r in results:
-                    r["session_id"] = r["_id"]
-                    self.sessions_col.replace_one({"_id": r["_id"]}, r, upsert=True)
-                logger.info(f"Materialized {len(results)} session summaries.")
+                self.rebuild_all_session_summaries()
         except Exception as e:
             logger.warning(f"Session materialization notice: {e}")
 

@@ -86,12 +86,12 @@
     }
   }
 
-  // --- Session Manager ---
-  function generateUUID() {
+  // --- Session & Event ID Generators ---
+  function generateId(prefix) {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-      return 'sess_' + crypto.randomUUID();
+      return prefix + crypto.randomUUID();
     }
-    return 'sess_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 9);
+    return prefix + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 9);
   }
 
   function getActiveSessionId() {
@@ -104,50 +104,63 @@
       return existing;
     }
 
-    const newSession = generateUUID();
+    const newSession = generateId('sess_');
     safeSetItem(STORAGE_KEYS.SESSION, newSession);
     safeSetItem(STORAGE_KEYS.LAST_ACTIVE, now.toString());
     log('Initialized session:', newSession);
     return newSession;
   }
 
-  // --- True Network Request Batch Dispatcher ---
-  function dispatchBatch(batchItems) {
+  // --- Network Request Batch Dispatchers ---
+  // Ordinary flushes use standard fetch with response verification and retry
+  function dispatchBatchFetch(batchItems) {
     if (!batchItems || batchItems.length === 0) return;
     const dataString = JSON.stringify(batchItems);
 
-    // 1. Try sendBeacon with batch array (best for unload)
+    fetch(config.endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: dataString
+    }).then(function (res) {
+      if (!res.ok) {
+        throw new Error('HTTP ' + res.status);
+      }
+      log(`Dispatched batch of ${batchItems.length} event(s) successfully via fetch`);
+    }).catch(function (err) {
+      log('Batch dispatch failed, restoring events to retry queue:', err.message);
+      // Restore failed events to the front of queue without exceeding cap
+      eventQueue = batchItems.concat(eventQueue).slice(0, config.maxQueueCap);
+    });
+  }
+
+  // Page exit is best-effort: try sendBeacon first, fallback to fetch with keepalive
+  function dispatchBatchUnload(batchItems) {
+    if (!batchItems || batchItems.length === 0) return;
+    const dataString = JSON.stringify(batchItems);
+
     if (navigator.sendBeacon) {
       try {
         const blob = new Blob([dataString], { type: 'application/json' });
         const accepted = navigator.sendBeacon(config.endpoint, blob);
         if (accepted) {
-          log(`Dispatched batch of ${batchItems.length} event(s) via sendBeacon`);
+          log(`Unload batch of ${batchItems.length} event(s) queued via sendBeacon`);
           return true;
         }
       } catch (err) {
-        log('sendBeacon failed, falling back to fetch', err);
+        log('sendBeacon failed during unload, falling back to keepalive fetch', err);
       }
     }
 
-    // 2. Fallback to fetch with keepalive & retry queue on network drop
-    fetch(config.endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: dataString,
-      keepalive: true
-    }).then(function (res) {
-      if (!res.ok) {
-        throw new Error('HTTP ' + res.status);
-      }
-      log(`Dispatched batch of ${batchItems.length} event(s) via fetch`);
-    }).catch(function (err) {
-      log('Batch dispatch failed, requeueing events:', err.message);
-      // Restore failed events to the front of queue without exceeding cap
-      eventQueue = batchItems.concat(eventQueue).slice(0, config.maxQueueCap);
-    });
-
-    return true;
+    try {
+      fetch(config.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: dataString,
+        keepalive: true
+      });
+    } catch (e) {
+      log('Unload keepalive fetch failed:', e);
+    }
   }
 
   // --- Queue Manager ---
@@ -157,13 +170,13 @@
     }
 
     if (eventQueue.length >= config.maxBatchSize) {
-      flush();
+      flush(false);
     } else if (!flushTimer) {
-      flushTimer = setTimeout(flush, config.flushIntervalMs);
+      flushTimer = setTimeout(function () { flush(false); }, config.flushIntervalMs);
     }
   }
 
-  function flush() {
+  function flush(isUnload) {
     if (flushTimer) {
       clearTimeout(flushTimer);
       flushTimer = null;
@@ -175,7 +188,11 @@
     const batch = eventQueue.slice();
     eventQueue = [];
 
-    dispatchBatch(batch);
+    if (isUnload) {
+      dispatchBatchUnload(batch);
+    } else {
+      dispatchBatchFetch(batch);
+    }
   }
 
   // --- Dimensions & Normalization Helpers ---
@@ -198,6 +215,7 @@
   // --- Event Handlers ---
   function trackPageView() {
     const payload = {
+      event_id: generateId('evt_'),
       session_id: getActiveSessionId(),
       event_type: 'page_view',
       url: window.location.href,
@@ -221,6 +239,7 @@
     const pctY = docBounds.height > 0 ? Number(((roundY / docBounds.height) * 100).toFixed(3)) : 0;
 
     const payload = {
+      event_id: generateId('evt_'),
       session_id: getActiveSessionId(),
       event_type: 'click',
       url: window.location.href,
@@ -250,10 +269,10 @@
 
     document.addEventListener('click', trackClick, true);
 
-    // Guaranteed flush on navigation / tab close
-    const exitFlush = function () { flush(); };
+    // Best-effort flush on page exit
+    const exitFlush = function () { flush(true); };
     window.addEventListener('visibilitychange', function () {
-      if (document.visibilityState === 'hidden') flush();
+      if (document.visibilityState === 'hidden') flush(true);
     });
     window.addEventListener('pagehide', exitFlush);
     window.addEventListener('beforeunload', exitFlush);

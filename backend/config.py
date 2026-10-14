@@ -10,6 +10,7 @@ class Config:
     
     MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/causalfunnel_analytics")
     PORT = int(os.getenv("PORT", 5000))
+    MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", 256 * 1024))  # 256KB bounded batch limit
     
     # Dashboard API Authentication
     ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "")

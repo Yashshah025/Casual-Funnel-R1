@@ -3,11 +3,22 @@
  */
 const BASE_URL = '/api';
 
+function safeGetApiKey() {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return window.localStorage.getItem('cf_admin_api_key');
+    }
+  } catch (e) {
+    // Gracefully ignore SecurityError or blocked storage in restricted frames
+  }
+  return null;
+}
+
 export async function apiClient(endpoint, options = {}) {
   const url = `${BASE_URL}${endpoint}`;
   
-  // Attach API key for dashboard auth if configured via env or local storage
-  const apiKey = (typeof window !== 'undefined' && (window.localStorage.getItem('cf_admin_api_key') || import.meta.env?.VITE_ADMIN_API_KEY)) || null;
+  // Attach API key for dashboard auth if configured via env or safe local storage
+  const apiKey = safeGetApiKey() || import.meta.env?.VITE_ADMIN_API_KEY || null;
 
   const headers = {
     'Content-Type': 'application/json',

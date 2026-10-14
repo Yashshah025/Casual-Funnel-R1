@@ -75,9 +75,9 @@ export default function HeatmapCanvas({ points = [], dotSize = 24, loading = fal
       <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between text-xs text-slate-600 gap-2">
         <div className="flex items-center gap-2">
           <Flame className="w-4 h-4 text-rose-500" />
-          <span className="font-bold text-slate-800 text-sm">User Engagement & Click Density Map</span>
+          <span className="font-bold text-slate-800 text-sm">Normalized Click Density Schematic</span>
           <span className="text-slate-400 text-xs hidden sm:inline">
-            (Visualizing where visitors interact on this page)
+            (Proportional layout projection of user attention)
           </span>
         </div>
 
@@ -276,7 +276,7 @@ export default function HeatmapCanvas({ points = [], dotSize = 24, loading = fal
 
         <div className="flex items-center gap-2 text-slate-500 text-[11px]">
           <Info className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-          <span>Dense clusters indicate high user engagement on buttons & links.</span>
+          <span>Proportional schematic: Visualizes relative attention across viewport zones without assuming a static DOM layout.</span>
         </div>
       </div>
 

@@ -30,6 +30,15 @@ def setup_indexes(collection):
             background=True
         )
 
+        # Index 4: Idempotency by client-supplied event_id (unique, sparse)
+        collection.create_index(
+            [("event_id", ASCENDING)],
+            name="idx_event_id_unique",
+            unique=True,
+            sparse=True,
+            background=True
+        )
+
         logger.info("MongoDB indexes verified successfully.")
     except Exception as e:
         logger.warning(f"Error while setting up indexes: {e}")

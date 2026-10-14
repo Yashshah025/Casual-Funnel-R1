@@ -9,7 +9,7 @@ class AnalyticsService:
         total_events = event_repository.count_by_type()
         total_page_views = event_repository.count_by_type("page_view")
         total_clicks = event_repository.count_by_type("click")
-        total_sessions = event_repository.count_distinct_sessions()
+        total_sessions = session_repository.count_total_sessions()
         unique_urls = len(event_repository.get_distinct_urls())
 
         return {

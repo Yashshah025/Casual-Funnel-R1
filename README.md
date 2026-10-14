@@ -71,36 +71,37 @@ CasualFunnel/
 
 ## 🔍 Key Technical Design & Implementations
 
-### 1. Normalized Heatmap Coordinate System
-- **Problem**: Projecting clicks based on `Math.max(...clicks)` causes coordinate positions to drift as new clicks arrive, and document scroll coordinates (`pageX`/`pageY`) do not map directly to a static canvas layout.
+### 1. Normalized Heatmap Coordinate System (Schematic)
+- **Problem**: Projecting clicks based on dynamic coordinate maximums causes positions to drift as new clicks arrive. Furthermore, page height changes with dynamic content, meaning absolute pixels cannot directly map to a static canvas layout.
 - **Solution**:
   - `tracker.js` records raw pixel coordinates along with normalized percentage positions:
     $$\text{pct\_x} = \frac{\text{pageX}}{\text{documentWidth}} \times 100, \quad \text{pct\_y} = \frac{\text{pageY}}{\text{documentHeight}} \times 100$$
-  - `HeatmapCanvas.jsx` renders clicks deterministically using these normalized percentages across a fixed layout aspect ratio. A click at (50%, 30%) remains at exactly (50%, 30%) regardless of subsequent clicks elsewhere.
-  - Viewport and document dimensions at click time are persisted for future overlay reconstruction.
+  - `HeatmapCanvas.jsx` visualizes clicks as a **Normalized Click Density Schematic** across conceptual viewport zones (Header, Hero, Product Grid, Footer). A click at (50%, 30%) remains deterministically at (50%, 30%).
+  - Raw pixel coordinates, viewport dimensions, and document bounds are preserved with each click document for future layout overlays.
 
-### 2. Materialized Session Summaries ($O(\log N)$ Pagination)
-- **Problem**: Performing a full collection `$group` by `session_id` on every paginated dashboard request forces MongoDB to scan and aggregate all events before applying `$skip` and `$limit`.
+### 2. Materialized Session Summaries & Idempotency ($O(\log N)$ Pagination)
+- **Problem**: Performing a full collection `$group` by `session_id` on every paginated dashboard request forces MongoDB to scan and aggregate all events before applying `$skip` and `$limit`. Additionally, network retries risk duplicate counting.
 - **Solution**:
   - Maintained a dedicated `sessions` collection using atomic MongoDB operators (`$inc`, `$min`, `$max`, `$addToSet`) during event ingestion (`upsert_session_summary`).
   - Session list pagination queries the indexed `sessions` collection with `{ last_active: -1 }`, eliminating runtime full-collection aggregations.
-  - Startup synchronizer (`sync_materialized_sessions_if_needed`) automatically initializes session summaries if the collection is empty.
+  - **Idempotency**: Every event contains an `event_id` backed by a unique sparse index `idx_event_id_unique`. Retried events are recognized and return HTTP success without re-incrementing session counters.
+  - **Reconciliation**: Added targeted session repair (`reconcile_session`) on write errors, plus an administrative reconciliation operation (`POST /api/admin/reconcile-sessions`) to rebuild summaries from raw events.
 
-### 3. True Client-Side Batching with Failure Recovery
-- **Problem**: Flushing a queue via individual HTTP requests creates excessive network and server connection overhead; clearing the queue before dispatch risks data loss on network failure.
+### 3. Client-Side Batching with Failure Recovery vs Best-Effort Unload
+- **Problem**: Individual network requests cause connection overhead. Unload beacons return immediately without server confirmation and cannot retry.
 - **Solution**:
-  - `tracker.js` dispatches queued events as a single array payload to `POST /api/events/batch` (or `POST /api/events`).
-  - If a network request fails (e.g. temporary offline state), unconfirmed events are re-enqueued (capped to prevent memory leaks).
-  - During page unload, `navigator.sendBeacon` transmits the JSON batch payload as an `ArrayBufferView` to bypass non-blocking teardown restrictions.
-  - Replaced direct `localStorage` access with a safe wrapper that falls back to in-memory session IDs when cookies/storage are blocked by browser privacy policies.
+  - Scheduled and threshold flushes use standard `fetch()`, verifying HTTP responses and requeuing failed batches (capped to prevent memory growth) for automatic retry.
+  - Page exit (`visibilitychange` / `pagehide` / `beforeunload`) uses `navigator.sendBeacon` (with keepalive fetch fallback) as a best-effort flush without blocking browser teardown.
+  - Storage access is protected by safe wrappers that fall back to memory storage in restricted/private browsing modes.
 
 ### 4. Strict Server-Side Validation
 `backend/services/ingestion_service.py` enforces data integrity before storage:
-- **Timestamp Validation**: Requires valid ISO 8601 timestamps; rejects malformed inputs instead of silently replacing them with `now()`.
+- **Timestamp Validation**: Requires valid ISO 8601 strings with explicit timezones (e.g. `Z` or `+00:00`); timezone-naive timestamps return a clean HTTP 400 `ValidationError`.
 - **Clock Skew Checks**: Rejects events with timestamps skewed > 10 minutes into the future or > 60 days in the past.
 - **Dual Timestamps**: Stores both client-reported `timestamp` and server-verified `server_ingested_at`.
 - **Coordinate Checks**: Rejects negative, non-numeric, `NaN`, or infinite coordinates for click events.
 - **URL Normalization**: Strips fragments (`#...`) and trailing slashes so URL analytics group reliably.
+- **Payload Limits**: Max request body bounded to 256KB (`MAX_CONTENT_LENGTH = 256 * 1024`), cleanly accommodating batches of up to 50 events (`MAX_BATCH_SIZE = 50`).
 
 ### 5. Security & Deployment Model
 - **Dashboard Authorization**: Optional `ADMIN_API_KEY` can be enforced via `REQUIRE_DASHBOARD_AUTH=true`. The API validates `X-API-Key` headers on protected analytics routes.
@@ -172,11 +173,12 @@ Open `http://localhost:5500` in your browser:
 
 | Method | Endpoint | Description | Auth Required |
 |---|---|---|---|
-| `POST` | `/api/events` | Ingest single event or batch array | No |
-| `POST` | `/api/events/batch` | Bulk event ingestion | No |
-| `GET` | `/api/health` | Service health & MongoDB ping | No |
-| `GET` | `/api/overview` | Aggregated dashboard KPI metrics | Optional / Configurable |
-| `GET` | `/api/sessions` | Paginated materialized session summaries | Optional / Configurable |
+| `POST` | `/api/events` | Ingest single event or batch array (idempotent via `event_id`) | No |
+| `POST` | `/api/events/batch` | Bulk event ingestion (up to 50 events) | No |
+| `GET` | `/health` / `/api/health` | Service health & MongoDB status | No |
+| `GET` | `/api/overview` | Aggregated dashboard KPI metrics (reads from materialized summaries) | Optional / Configurable |
+| `GET` | `/api/sessions` | Paginated materialized session summaries ($O(\log N)$) | Optional / Configurable |
 | `GET` | `/api/sessions/:id` | Full chronological event journey for a session | Optional / Configurable |
-| `GET` | `/api/analytics/clicks` | Filtered click points with normalized coordinates | Optional / Configurable |
-| `GET` | `/api/analytics/urls` | Distinct tracked URLs for heatmap dropdown | Optional / Configurable |
+| `GET` | `/api/analytics/clicks` | Filtered click points with normalized percentage coordinates | Optional / Configurable |
+| `GET` | `/api/analytics/pages` | Tracked URLs for heatmap dropdown (`/api/analytics/urls` alias) | Optional / Configurable |
+| `POST` | `/api/admin/reconcile-sessions` | Recalculate session summaries from raw events | Admin API Key |

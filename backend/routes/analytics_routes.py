@@ -57,7 +57,22 @@ def get_heatmap_clicks():
     return success_response(data=data)
 
 @analytics_bp.route('/analytics/pages', methods=['GET'])
+@analytics_bp.route('/analytics/urls', methods=['GET'])  # Alias for backward compatibility
 @limiter.limit(Config.ANALYTICS_RATE_LIMIT)
 def get_tracked_pages():
     pages = analytics_service.get_tracked_pages()
     return success_response(data={"pages": pages})
+
+@analytics_bp.route('/admin/reconcile-sessions', methods=['POST'])
+@limiter.limit("10 per minute")
+def reconcile_sessions():
+    """
+    Administrative endpoint to recalculate all session summaries from events.
+    Enforces API key authentication when configured.
+    """
+    from repositories.session_repository import session_repository
+    rebuilt_count = session_repository.rebuild_all_session_summaries()
+    return success_response(
+        message=f"Reconciled {rebuilt_count} session summaries successfully",
+        data={"rebuilt_count": rebuilt_count}
+    )

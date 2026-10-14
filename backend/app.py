@@ -13,8 +13,8 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
 
-    # 1. Enforce max payload limit (16KB)
-    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024
+    # 1. Enforce bounded payload limit (Config.MAX_CONTENT_LENGTH)
+    app.config['MAX_CONTENT_LENGTH'] = Config.MAX_CONTENT_LENGTH
 
     # 2. Initialize extensions
     # Ingestion endpoints allow public origins; analytics endpoints restrict to dashboard origins in production
@@ -60,8 +60,9 @@ def create_app():
     def serve_demo(filename='index.html'):
         return send_from_directory(demo_dir, filename)
 
-    # 6. Service Health Check
+    # 6. Service Health Check (Both /health and /api/health supported)
     @app.route('/health', methods=['GET'])
+    @app.route('/api/health', methods=['GET'])
     def health():
         return success_response(
             data={"status": "healthy", "service": "CausalFunnel Analytics Engine"}

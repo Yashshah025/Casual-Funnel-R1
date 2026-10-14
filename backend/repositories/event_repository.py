@@ -11,6 +11,19 @@ class EventRepository:
             self._collection = mongo_manager.get_collection("events")
         return self._collection
 
+    def find_by_event_id(self, event_id):
+        """Find an event by its idempotency event_id."""
+        if not event_id:
+            return None
+        return self.collection.find_one({"event_id": event_id})
+
+    def find_existing_event_ids(self, event_ids):
+        """Find set of existing event_ids from a list to filter duplicates."""
+        if not event_ids:
+            return set()
+        existing = self.collection.distinct("event_id", {"event_id": {"$in": event_ids}})
+        return set(existing)
+
     def insert(self, event_doc):
         """Insert a single event document."""
         result = self.collection.insert_one(event_doc)
@@ -20,7 +33,7 @@ class EventRepository:
         """Insert multiple event documents."""
         if not event_docs:
             return []
-        result = self.collection.insert_many(event_docs)
+        result = self.collection.insert_many(event_docs, ordered=False)
         return [str(idx) for idx in result.inserted_ids]
 
     def find_by_session_id(self, session_id):
