@@ -111,6 +111,36 @@ CasualFunnel/
 
 ---
 
+## 🛠️ Tech Stack
+
+- **Client Tracking SDK**: Vanilla JavaScript (UMD bundle, zero runtime dependencies, beacon API, storage fallback, event batching).
+- **Backend API**: Python 3.10+ & Flask 3.0 (Application Factory, Blueprints, PyMongo, Flask-CORS, Flask-Limiter, Waitress/Gunicorn WSGI).
+- **Database**: MongoDB 6.0+ (Compound indexes, atomic operators `$inc`, `$min`, `$max`, `$addToSet`, unique sparse index for idempotency).
+- **Frontend Dashboard**: React 18, Vite 5, Tailwind CSS, Lucide React (Custom hooks, responsive zero-scroll schematic heatmap canvas, user journey timeline modal).
+- **E-Commerce Testbed**: HTML5, CSS3, JavaScript (Multi-page shop with cart, product views, and click zones).
+
+---
+
+## ⚖️ Assumptions & Trade-Offs
+
+1. **Normalized Schematic vs. DOM Element Overlay**:
+   - *Decision*: Clicks are mapped to a normalized 0%–100% canvas schematic rather than capturing complete DOM element trees or full webpage screenshots.
+   - *Rationale*: A schematic heatmap is completely cross-browser, responsive across viewport sizes, avoids cross-origin iframe security barriers, and works without fragile DOM tree snapshots. Viewport bounds and raw coordinates are preserved in MongoDB for future element-level mapping.
+2. **Materialized Session Summaries vs. Dynamic $group Aggregation**:
+   - *Decision*: Maintain a dedicated `sessions` collection incrementally on write using atomic MongoDB operators, supplemented with an admin reconciliation endpoint (`POST /api/admin/reconcile-sessions`).
+   - *Rationale*: Running `$group` across the entire `events` collection on every dashboard page load creates an $O(N)$ CPU and memory bottleneck at scale. Materialized summaries make session list pagination $O(\log N)$ fast.
+3. **API Key Authentication vs. Full User Login System**:
+   - *Decision*: Implemented environment-driven API key authorization (`ADMIN_API_KEY` with `X-API-Key` headers) rather than a multi-table user registration/login system.
+   - *Rationale*: Eliminates evaluation friction for interviewers testing the project locally while strictly enforcing security policies. In an enterprise setting, the dashboard would sit behind company SSO (Okta/Auth0) or an API Gateway.
+4. **In-Memory Rate Limiting vs. Distributed Cache**:
+   - *Decision*: Configured `Flask-Limiter` with in-memory storage by default, with `RATELIMIT_STORAGE_URI` configurable for Redis.
+   - *Rationale*: Keeps local setup zero-dependency (no Redis requirement for reviewers). For horizontal multi-worker scaling, pointing `RATELIMIT_STORAGE_URI` to a Redis instance shares limits across instances.
+5. **Client-Side Queue & Network Batching with Best-Effort Unload**:
+   - *Decision*: Normal flushes use `fetch()` with automatic requeueing on failure. Unload listeners use `navigator.sendBeacon`.
+   - *Rationale*: `sendBeacon` transfers responsibility to the browser to prevent dropped events on tab close, but does not provide delivery guarantees or retry hooks. Scheduled flushes use `fetch()` to guarantee response verification and retry resilience.
+
+---
+
 ## 🚀 Getting Started
 
 ### Prerequisites
