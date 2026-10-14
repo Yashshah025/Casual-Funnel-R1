@@ -6,6 +6,7 @@ Use with Gunicorn or Waitress in production:
 from app import create_app
 
 app = create_app()
+application = app  # Alias for WSGI servers expecting 'application'
 
 if __name__ == "__main__":
     app.run()
