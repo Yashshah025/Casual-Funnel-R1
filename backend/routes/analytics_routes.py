@@ -7,13 +7,20 @@ from config import Config
 analytics_bp = Blueprint('analytics', __name__)
 
 @analytics_bp.before_request
-def verify_api_key_if_configured():
-    """Optional dashboard authentication layer."""
-    secret = Config.ADMIN_API_KEY
-    if secret:
+def verify_api_key():
+    """
+    Enforces authentication on all dashboard/analytics endpoints.
+    Active if REQUIRE_DASHBOARD_AUTH=true or ADMIN_API_KEY is configured.
+    """
+    if Config.REQUIRE_DASHBOARD_AUTH or Config.ADMIN_API_KEY:
+        secret = Config.ADMIN_API_KEY
         key = request.headers.get("X-API-Key") or request.headers.get("Authorization")
         if not key or (key != secret and key != f"Bearer {secret}"):
-            return error_response(message="Invalid or missing API Key", status_code=401)
+            return error_response(
+                message="Unauthorized: A valid API key is required to access analytics data.",
+                status_code=401,
+                details={"header_hint": "Provide 'X-API-Key' or 'Authorization: Bearer <key>'"}
+            )
 
 @analytics_bp.route('/overview', methods=['GET'])
 @limiter.limit(Config.ANALYTICS_RATE_LIMIT)

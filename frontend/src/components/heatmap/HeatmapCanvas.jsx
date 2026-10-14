@@ -6,12 +6,25 @@ export default function HeatmapCanvas({ points = [], dotSize = 24, loading = fal
   const [cursorPos, setCursorPos] = useState({ x: 0, y: 0, active: false });
   const canvasRef = useRef(null);
 
-  // Compute maximum coordinate range based on actual clicks
-  const rawMaxX = Math.max(1200, ...points.map(p => p.x + 80));
-  const rawMaxY = Math.max(700, ...points.map(p => p.y + 80));
-  
-  const maxX = Math.ceil(rawMaxX / 100) * 100;
-  const maxY = Math.ceil(rawMaxY / 100) * 100;
+  // Helper to resolve normalized percentage coordinates for each point
+  const getPointCoords = (pt) => {
+    let posX = pt.pct_x;
+    let posY = pt.pct_y;
+
+    // Fallback if pct_x / pct_y are missing (e.g. legacy events before migration)
+    if (posX == null || isNaN(posX)) {
+      const docW = pt.document?.width || pt.viewport?.width || 1440;
+      posX = (pt.x / docW) * 100;
+    }
+    if (posY == null || isNaN(posY)) {
+      const docH = pt.document?.height || (pt.viewport?.height ? pt.viewport.height * 1.5 : 1200);
+      posY = (pt.y / docH) * 100;
+    }
+    return {
+      posX: Math.max(0, Math.min(100, Number(posX))),
+      posY: Math.max(0, Math.min(100, Number(posY)))
+    };
+  };
 
   // Conceptual Webpage Layout Zones for X-Axis (Horizontal)
   const xZones = [
@@ -36,19 +49,17 @@ export default function HeatmapCanvas({ points = [], dotSize = 24, loading = fal
     const relX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
     const relY = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
 
-    const x = Math.round((relX / rect.width) * maxX);
-    const y = Math.round((relY / rect.height) * maxY);
+    const percentX = (relX / rect.width) * 100;
+    const percentY = (relY / rect.height) * 100;
 
-    // Determine current zone
-    const currentXZone = relX / rect.width < 0.35 ? "Left" : relX / rect.width < 0.65 ? "Center" : "Right";
-    const currentYZone = relY / rect.height < 0.2 ? "Header" : relY / rect.height < 0.5 ? "Hero (Above Fold)" : "Product Grid";
+    // Determine current zone deterministically based on page proportions
+    const currentXZone = percentX < 33 ? "Left Column" : percentX < 66 ? "Center Stage" : "Right Column";
+    const currentYZone = percentY < 25 ? "Header" : percentY < 55 ? "Hero (Above Fold)" : "Product Grid & Body";
 
     setCursorPos({
-      x,
-      y,
+      percentX,
+      percentY,
       zone: `${currentXZone} · ${currentYZone}`,
-      percentX: (relX / rect.width) * 100,
-      percentY: (relY / rect.height) * 100,
       active: true
     });
   };
@@ -75,7 +86,14 @@ export default function HeatmapCanvas({ points = [], dotSize = 24, loading = fal
           {hoveredPoint ? (
             <div className="bg-rose-50 border border-rose-200 text-rose-700 px-3 py-1 rounded-lg flex items-center gap-1.5 shadow-xs text-xs font-semibold animate-in fade-in duration-150">
               <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>
-              <strong>Active Click Point:</strong> {hoveredPoint.x < maxX * 0.35 ? "Left Card Area" : hoveredPoint.x < maxX * 0.7 ? "Center / Hero" : "Right Card Area"}
+              <strong>Active Click Point:</strong> {
+                (() => {
+                  const coords = getPointCoords(hoveredPoint);
+                  const xZone = coords.posX < 33 ? "Left Card Area" : coords.posX < 66 ? "Center / Hero" : "Right Card Area";
+                  const yZone = coords.posY < 25 ? "Top / Header" : coords.posY < 55 ? "Hero Section" : "Products / Footer";
+                  return `${xZone} (${yZone}) • ${coords.posX.toFixed(1)}%, ${coords.posY.toFixed(1)}%`;
+                })()
+              }
             </div>
           ) : cursorPos.active ? (
             <div className="bg-indigo-50 border border-indigo-200 text-indigo-700 px-3 py-1 rounded-lg flex items-center gap-1.5 shadow-xs text-xs">
@@ -198,8 +216,7 @@ export default function HeatmapCanvas({ points = [], dotSize = 24, loading = fal
 
               {/* Click Heat Points (Proportional projection across layout) */}
               {points.map((pt, idx) => {
-                const posXPercent = (pt.x / maxX) * 100;
-                const posYPercent = (pt.y / maxY) * 100;
+                const { posX, posY } = getPointCoords(pt);
 
                 return (
                   <div
@@ -208,15 +225,15 @@ export default function HeatmapCanvas({ points = [], dotSize = 24, loading = fal
                     onMouseLeave={() => setHoveredPoint(null)}
                     className="absolute cursor-pointer rounded-full transition-transform hover:scale-175 z-10"
                     style={{
-                      left: `${posXPercent}%`,
-                      top: `${posYPercent}%`,
+                      left: `${posX}%`,
+                      top: `${posY}%`,
                       width: `${dotSize}px`,
                       height: `${dotSize}px`,
                       transform: 'translate(-50%, -50%)',
                       background: 'radial-gradient(circle, rgba(244, 63, 94, 0.95) 0%, rgba(245, 158, 11, 0.7) 45%, rgba(234, 179, 8, 0) 100%)',
                       boxShadow: '0 0 14px rgba(244, 63, 94, 0.75)',
                     }}
-                    title={`Click at (${pt.x}px, ${pt.y}px)`}
+                    title={`Click at (${pt.x}px, ${pt.y}px) • Normalized: (${posX.toFixed(1)}%, ${posY.toFixed(1)}%)`}
                   />
                 );
               })}

@@ -5,11 +5,18 @@ const BASE_URL = '/api';
 
 export async function apiClient(endpoint, options = {}) {
   const url = `${BASE_URL}${endpoint}`;
+  
+  // Attach API key for dashboard auth if configured via env or local storage
+  const apiKey = (typeof window !== 'undefined' && (window.localStorage.getItem('cf_admin_api_key') || import.meta.env?.VITE_ADMIN_API_KEY)) || null;
+
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(apiKey ? { 'X-API-Key': apiKey } : {}),
+    ...options.headers,
+  };
+
   const config = {
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
+    headers,
     ...options,
   };
 

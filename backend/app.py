@@ -17,10 +17,17 @@ def create_app():
     app.config['MAX_CONTENT_LENGTH'] = 16 * 1024
 
     # 2. Initialize extensions
+    # Ingestion endpoints allow public origins; analytics endpoints restrict to dashboard origins in production
+    dashboard_origins = ["*"] if Config.DEBUG else Config.ALLOWED_DASHBOARD_ORIGINS
     cors.init_app(app, resources={
-        r"/api/*": {
+        r"/api/events*": {
             "origins": "*",
-            "methods": ["GET", "POST", "OPTIONS"],
+            "methods": ["POST", "OPTIONS"],
+            "allow_headers": ["Content-Type"]
+        },
+        r"/api/*": {
+            "origins": dashboard_origins,
+            "methods": ["GET", "OPTIONS"],
             "allow_headers": ["Content-Type", "Authorization", "X-API-Key"]
         }
     })
@@ -31,6 +38,8 @@ def create_app():
     try:
         events_col = mongo_manager.get_collection("events")
         setup_indexes(events_col)
+        from repositories.session_repository import session_repository
+        session_repository.sync_materialized_sessions_if_needed()
     except Exception as e:
         logger.warning(f"Database deferred initialization: {e}")
 
@@ -101,5 +110,5 @@ def create_app():
 if __name__ == '__main__':
     app = create_app()
     port = Config.PORT
-    logger.info(f"Starting server on http://0.0.0.0:{port}")
-    app.run(host='0.0.0.0', port=port, debug=True)
+    logger.info(f"Starting server on http://0.0.0.0:{port} (Debug: {Config.DEBUG})")
+    app.run(host='0.0.0.0', port=port, debug=Config.DEBUG)

@@ -1,11 +1,14 @@
 /**
- * CausalFunnel Analytics Tracker (Production Grade)
+ * CausalFunnel Analytics Tracker SDK
  * 
  * Features:
  * - Session tracking with sliding 30-min inactivity window & UUID persistence
- * - In-memory event batching & scheduled queue flushing
- * - Guaranteed dispatch on page exit (visibilitychange / pagehide / beforeunload)
- * - Zero external dependencies, UMD pattern, non-blocking asynchronous execution
+ * - In-memory event queue with true single-request network batching
+ * - Failed dispatch retry with bounded queue cap
+ * - Safe storage wrapper with memory fallback for restricted environments
+ * - Captures document-relative (pageX, pageY), normalized percentages (pct_x, pct_y),
+ *   viewport dimensions, and full document bounds for accurate heatmap scaling
+ * - Guaranteed unload flush via visibilitychange, pagehide, and beforeunload
  */
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
@@ -18,30 +21,67 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  // --- Configuration Defaults ---
+  // --- Dynamic Endpoint Resolution ---
+  function resolveDefaultEndpoint() {
+    if (typeof window !== 'undefined' && window.location) {
+      // If loaded on a static server, point to port 5000 on the same host
+      const port = window.location.port === '5000' ? '' : ':5000';
+      return window.location.protocol + '//' + window.location.hostname + port + '/api/events';
+    }
+    return 'http://localhost:5000/api/events';
+  }
+
   const currentScript = document.currentScript;
   const defaults = {
-    endpoint: (currentScript && currentScript.getAttribute('data-endpoint')) || 'http://localhost:5000/api/events',
-    sessionTimeoutMs: 30 * 60 * 1000, // 30 minutes
-    flushIntervalMs: 2000,             // Flush queue every 2 seconds
-    maxBatchSize: 10,                  // Flush immediately if 10 events queued
+    endpoint: (currentScript && currentScript.getAttribute('data-endpoint')) ||
+              (typeof window !== 'undefined' && window.CF_ENDPOINT) ||
+              resolveDefaultEndpoint(),
+    sessionTimeoutMs: 30 * 60 * 1000, // 30 minutes inactivity timeout
+    flushIntervalMs: 2000,             // Batch flush every 2 seconds
+    maxBatchSize: 10,                  // Immediate flush if 10 events queued
+    maxQueueCap: 50,                   // Prevent unbounded memory growth on disconnect
     debug: false
   };
 
-  const config = Object.assign({}, defaults, window.CF_CONFIG || {});
+  const config = Object.assign({}, defaults, (typeof window !== 'undefined' && window.CF_CONFIG) || {});
 
   const STORAGE_KEYS = {
     SESSION: 'cf_session_id',
     LAST_ACTIVE: 'cf_last_active'
   };
 
-  // Internal state
+  // Safe Storage fallback (handles private browsing / blocked cookies)
+  const memoryFallback = {};
+  function safeGetItem(key) {
+    try {
+      return localStorage.getItem(key);
+    } catch (e) {
+      return memoryFallback[key] || null;
+    }
+  }
+
+  function safeSetItem(key, val) {
+    try {
+      localStorage.setItem(key, val);
+    } catch (e) {
+      memoryFallback[key] = val;
+    }
+  }
+
+  function safeRemoveItem(key) {
+    try {
+      localStorage.removeItem(key);
+    } catch (e) {
+      delete memoryFallback[key];
+    }
+  }
+
+  // Internal queue state
   let eventQueue = [];
   let flushTimer = null;
 
-  // --- Logger ---
   function log(...args) {
-    if (config.debug) {
+    if (config.debug && typeof console !== 'undefined') {
       console.log('[CF Tracker]', ...args);
     }
   }
@@ -56,52 +96,65 @@
 
   function getActiveSessionId() {
     const now = Date.now();
-    const existing = localStorage.getItem(STORAGE_KEYS.SESSION);
-    const lastActive = parseInt(localStorage.getItem(STORAGE_KEYS.LAST_ACTIVE) || '0', 10);
+    const existing = safeGetItem(STORAGE_KEYS.SESSION);
+    const lastActive = parseInt(safeGetItem(STORAGE_KEYS.LAST_ACTIVE) || '0', 10);
 
     if (existing && (now - lastActive < config.sessionTimeoutMs)) {
-      localStorage.setItem(STORAGE_KEYS.LAST_ACTIVE, now.toString());
+      safeSetItem(STORAGE_KEYS.LAST_ACTIVE, now.toString());
       return existing;
     }
 
     const newSession = generateUUID();
-    localStorage.setItem(STORAGE_KEYS.SESSION, newSession);
-    localStorage.setItem(STORAGE_KEYS.LAST_ACTIVE, now.toString());
-    log('Initialized new session:', newSession);
+    safeSetItem(STORAGE_KEYS.SESSION, newSession);
+    safeSetItem(STORAGE_KEYS.LAST_ACTIVE, now.toString());
+    log('Initialized session:', newSession);
     return newSession;
   }
 
-  // --- Event Dispatcher ---
-  function dispatchPayload(payload) {
-    const dataString = JSON.stringify(payload);
+  // --- True Network Request Batch Dispatcher ---
+  function dispatchBatch(batchItems) {
+    if (!batchItems || batchItems.length === 0) return;
+    const dataString = JSON.stringify(batchItems);
 
-    // 1. Try sendBeacon (preferred for analytics, especially on unload)
+    // 1. Try sendBeacon with batch array (best for unload)
     if (navigator.sendBeacon) {
       try {
         const blob = new Blob([dataString], { type: 'application/json' });
-        const enqueued = navigator.sendBeacon(config.endpoint, blob);
-        if (enqueued) return true;
+        const accepted = navigator.sendBeacon(config.endpoint, blob);
+        if (accepted) {
+          log(`Dispatched batch of ${batchItems.length} event(s) via sendBeacon`);
+          return true;
+        }
       } catch (err) {
         log('sendBeacon failed, falling back to fetch', err);
       }
     }
 
-    // 2. Fallback to fetch with keepalive
+    // 2. Fallback to fetch with keepalive & retry queue on network drop
     fetch(config.endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: dataString,
       keepalive: true
-    }).catch(err => {
-      log('Fetch dispatch failed:', err.message);
+    }).then(function (res) {
+      if (!res.ok) {
+        throw new Error('HTTP ' + res.status);
+      }
+      log(`Dispatched batch of ${batchItems.length} event(s) via fetch`);
+    }).catch(function (err) {
+      log('Batch dispatch failed, requeueing events:', err.message);
+      // Restore failed events to the front of queue without exceeding cap
+      eventQueue = batchItems.concat(eventQueue).slice(0, config.maxQueueCap);
     });
 
     return true;
   }
 
-  // --- Queue & Batch Manager ---
+  // --- Queue Manager ---
   function enqueue(event) {
-    eventQueue.push(event);
+    if (eventQueue.length < config.maxQueueCap) {
+      eventQueue.push(event);
+    }
 
     if (eventQueue.length >= config.maxBatchSize) {
       flush();
@@ -118,35 +171,54 @@
 
     if (eventQueue.length === 0) return;
 
-    // Send items individually or in batch (our backend accepts standard event object)
-    const itemsToSend = eventQueue.slice();
+    // Pull entire queue into a single batch
+    const batch = eventQueue.slice();
     eventQueue = [];
 
-    itemsToSend.forEach(item => {
-      dispatchPayload(item);
-    });
-
-    log(`Flushed ${itemsToSend.length} event(s)`);
+    dispatchBatch(batch);
   }
 
-  // --- Trackers ---
+  // --- Dimensions & Normalization Helpers ---
+  function getViewportDimensions() {
+    return {
+      width: window.innerWidth || document.documentElement.clientWidth || 0,
+      height: window.innerHeight || document.documentElement.clientHeight || 0
+    };
+  }
+
+  function getDocumentDimensions() {
+    const doc = document.documentElement;
+    const body = document.body;
+    return {
+      width: Math.max(doc.scrollWidth, body ? body.scrollWidth : 0, doc.clientWidth),
+      height: Math.max(doc.scrollHeight, body ? body.scrollHeight : 0, doc.clientHeight)
+    };
+  }
+
+  // --- Event Handlers ---
   function trackPageView() {
     const payload = {
       session_id: getActiveSessionId(),
       event_type: 'page_view',
       url: window.location.href,
       timestamp: new Date().toISOString(),
-      viewport: {
-        width: window.innerWidth,
-        height: window.innerHeight
-      }
+      viewport: getViewportDimensions(),
+      document: getDocumentDimensions()
     };
     enqueue(payload);
   }
 
   function trackClick(e) {
-    const x = e.pageX !== undefined ? e.pageX : e.clientX + (document.documentElement.scrollLeft || document.body.scrollLeft);
-    const y = e.pageY !== undefined ? e.pageY : e.clientY + (document.documentElement.scrollTop || document.body.scrollTop);
+    const x = e.pageX !== undefined ? e.pageX : e.clientX + (document.documentElement.scrollLeft || (document.body && document.body.scrollLeft) || 0);
+    const y = e.pageY !== undefined ? e.pageY : e.clientY + (document.documentElement.scrollTop || (document.body && document.body.scrollTop) || 0);
+
+    const docBounds = getDocumentDimensions();
+    const roundX = Math.round(x);
+    const roundY = Math.round(y);
+
+    // Compute normalized percentage coordinates against full document dimensions
+    const pctX = docBounds.width > 0 ? Number(((roundX / docBounds.width) * 100).toFixed(3)) : 0;
+    const pctY = docBounds.height > 0 ? Number(((roundY / docBounds.height) * 100).toFixed(3)) : 0;
 
     const payload = {
       session_id: getActiveSessionId(),
@@ -154,52 +226,51 @@
       url: window.location.href,
       timestamp: new Date().toISOString(),
       coordinates: {
-        x: Math.round(x),
-        y: Math.round(y)
+        x: roundX,
+        y: roundY
       },
-      viewport: {
-        width: window.innerWidth,
-        height: window.innerHeight
-      }
+      normalized: {
+        pct_x: Math.min(100, Math.max(0, pctX)),
+        pct_y: Math.min(100, Math.max(0, pctY))
+      },
+      viewport: getViewportDimensions(),
+      document: docBounds
     };
+
     enqueue(payload);
   }
 
   // --- Lifecycle Listeners ---
   function init() {
-    // 1. Initial Page View
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
       trackPageView();
     } else {
       window.addEventListener('DOMContentLoaded', trackPageView);
     }
 
-    // 2. Global Click Capture
     document.addEventListener('click', trackClick, true);
 
-    // 3. Flush on Page Exit
-    const exitHandler = () => flush();
-    window.addEventListener('visibilitychange', () => {
+    // Guaranteed flush on navigation / tab close
+    const exitFlush = function () { flush(); };
+    window.addEventListener('visibilitychange', function () {
       if (document.visibilityState === 'hidden') flush();
     });
-    window.addEventListener('pagehide', exitHandler);
-    window.addEventListener('beforeunload', exitHandler);
+    window.addEventListener('pagehide', exitFlush);
+    window.addEventListener('beforeunload', exitFlush);
 
-    log('Tracker initialized successfully.');
+    log('Tracker initialized. Endpoint:', config.endpoint);
   }
 
-  // Auto initialize
   init();
 
-  // Public SDK
   return {
     getSessionId: getActiveSessionId,
     trackPageView: trackPageView,
     trackCustomEvent: enqueue,
     flush: flush,
     resetSession: function () {
-      localStorage.removeItem(STORAGE_KEYS.SESSION);
-      localStorage.removeItem(STORAGE_KEYS.LAST_ACTIVE);
+      safeRemoveItem(STORAGE_KEYS.SESSION);
+      safeRemoveItem(STORAGE_KEYS.LAST_ACTIVE);
       return getActiveSessionId();
     }
   };

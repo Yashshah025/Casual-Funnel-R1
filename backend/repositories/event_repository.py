@@ -34,7 +34,7 @@ class EventRepository:
             "event_type": "click",
             "coordinates": {"$ne": None}
         }
-        projection = {"coordinates": 1, "viewport": 1, "timestamp": 1, "_id": 1}
+        projection = {"coordinates": 1, "normalized": 1, "viewport": 1, "document": 1, "timestamp": 1, "_id": 1}
         return list(self.collection.find(query, projection).sort("timestamp", -1))
 
     def get_distinct_urls(self):

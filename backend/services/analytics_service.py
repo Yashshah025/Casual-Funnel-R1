@@ -28,32 +28,13 @@ class AnalyticsService:
         limit = max(1, min(limit, 100))
         skip = (page - 1) * limit
 
-        result = session_repository.aggregate_sessions(skip=skip, limit=limit)
-        raw_sessions = result.get("sessions", [])
+        result = session_repository.get_paginated_sessions(skip=skip, limit=limit)
+        sessions = result.get("sessions", [])
         total_count = result.get("total_count", 0)
         total_pages = max(1, math.ceil(total_count / limit)) if total_count > 0 else 1
 
-        formatted = []
-        for doc in raw_sessions:
-            started_at = doc.get("started_at")
-            last_active = doc.get("last_active")
-            duration_secs = 0
-            if started_at and last_active:
-                duration_secs = max(0, int((last_active - started_at).total_seconds()))
-
-            formatted.append({
-                "session_id": doc["_id"],
-                "total_events": doc.get("total_events", 0),
-                "page_views": doc.get("page_views", 0),
-                "clicks": doc.get("clicks", 0),
-                "started_at": started_at.isoformat() if started_at else None,
-                "last_active": last_active.isoformat() if last_active else None,
-                "duration_seconds": duration_secs,
-                "pages_visited": doc.get("pages_visited", [])
-            })
-
         return {
-            "sessions": formatted,
+            "sessions": sessions,
             "pagination": {
                 "total_count": total_count,
                 "page": page,
@@ -103,11 +84,26 @@ class AnalyticsService:
         for d in docs:
             coords = d.get("coordinates")
             if coords and "x" in coords and "y" in coords:
+                norm = d.get("normalized")
+                vp = d.get("viewport")
+                doc_bounds = d.get("document")
+
+                # If normalized wasn't stored by client, compute from viewport or document if available
+                pct_x = norm.get("pct_x") if norm else None
+                pct_y = norm.get("pct_y") if norm else None
+                if pct_x is None and doc_bounds and doc_bounds.get("width"):
+                    pct_x = round((coords["x"] / doc_bounds["width"]) * 100, 3)
+                if pct_y is None and doc_bounds and doc_bounds.get("height"):
+                    pct_y = round((coords["y"] / doc_bounds["height"]) * 100, 3)
+
                 points.append({
                     "id": str(d["_id"]),
                     "x": coords["x"],
                     "y": coords["y"],
-                    "viewport": d.get("viewport"),
+                    "pct_x": pct_x,
+                    "pct_y": pct_y,
+                    "viewport": vp,
+                    "document": doc_bounds,
                     "timestamp": d["timestamp"].isoformat() if d.get("timestamp") else None
                 })
 
