@@ -1,7 +1,8 @@
 /**
  * Base API client with consistent response parsing and error handling
  */
-const BASE_URL = '/api';
+const API_BASE = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) || '';
+const BASE_URL = API_BASE ? `${API_BASE.replace(/\/$/, '')}/api` : '/api';
 
 function safeGetApiKey() {
   try {
