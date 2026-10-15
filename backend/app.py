@@ -17,14 +17,15 @@ def create_app():
     app.config['MAX_CONTENT_LENGTH'] = Config.MAX_CONTENT_LENGTH
 
     # 2. Initialize extensions
-    # Allow cross-origin requests for all API routes (Vercel frontend, local dev, beacons)
-    cors.init_app(app, resources={
-        r"/api/*": {
-            "origins": "*",
-            "methods": ["GET", "POST", "OPTIONS"],
-            "allow_headers": ["Content-Type", "Authorization", "X-API-Key"]
-        }
-    })
+    cors.init_app(app, resources={r"/*": {"origins": "*"}})
+
+    # Explicit global CORS headers for preflights & all responses
+    @app.after_request
+    def set_cors_headers(response):
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-API-Key'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+        return response
     limiter.init_app(app)
     cache.init_app(app)
 

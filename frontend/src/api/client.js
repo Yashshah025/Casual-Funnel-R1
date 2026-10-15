@@ -1,7 +1,10 @@
 /**
  * Base API client with consistent response parsing and error handling
  */
-const API_BASE = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) || '';
+let API_BASE = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) || '';
+if (!API_BASE && typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')) {
+  API_BASE = 'https://casual-funnel-r1.onrender.com';
+}
 const BASE_URL = API_BASE ? `${API_BASE.replace(/\/$/, '')}/api` : '/api';
 
 function safeGetApiKey() {
