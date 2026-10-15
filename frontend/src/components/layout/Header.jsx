@@ -49,22 +49,14 @@ export default function Header({ activeTab, onTabChange, autoRefresh, onToggleAu
 
         {/* Actions & Demo Link */}
         <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200/80 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors border border-slate-200 select-none">
-            <span className="relative flex h-2 w-2">
-              {autoRefresh && (
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              )}
-              <span className={`relative inline-flex rounded-full h-2 w-2 ${autoRefresh ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
-            </span>
+          <label className="hidden sm:flex items-center gap-2 text-xs font-medium text-slate-600 cursor-pointer">
             <input
               type="checkbox"
               checked={autoRefresh}
               onChange={(e) => onToggleAutoRefresh(e.target.checked)}
-              className="sr-only"
+              className="rounded accent-indigo-600 w-4 h-4"
             />
-            <span className="font-semibold text-slate-800">
-              {autoRefresh ? 'Live (3s)' : 'Live Off'}
-            </span>
+            Live Polling (5s)
           </label>
           {(() => {
             const demoStoreUrl = (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app'))

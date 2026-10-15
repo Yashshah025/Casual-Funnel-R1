@@ -3,7 +3,7 @@ import { useHeatmap } from '../hooks/useHeatmap';
 import HeatmapControls from './heatmap/HeatmapControls';
 import HeatmapCanvas from './heatmap/HeatmapCanvas';
 
-export default function HeatmapView({ pollInterval = 0 }) {
+export default function HeatmapView() {
   const [dotSize, setDotSize] = useState(24);
   const {
     pages,
@@ -15,7 +15,7 @@ export default function HeatmapView({ pollInterval = 0 }) {
     error,
     refetchClicks,
     refetchPages
-  } = useHeatmap('', pollInterval);
+  } = useHeatmap();
 
   return (
     <div className="space-y-4">

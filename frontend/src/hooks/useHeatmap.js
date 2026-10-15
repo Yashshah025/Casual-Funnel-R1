@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { analyticsApi } from '../api/analyticsApi';
 
-export function useHeatmap(initialUrl = '', autoRefreshInterval = 0) {
+export function useHeatmap(initialUrl = '') {
   const [pages, setPages] = useState([]);
   const [selectedUrl, setSelectedUrl] = useState(initialUrl);
   const [clickData, setClickData] = useState(null);
@@ -11,6 +11,7 @@ export function useHeatmap(initialUrl = '', autoRefreshInterval = 0) {
 
   // Load distinct tracked pages
   const fetchPages = useCallback(async () => {
+    setLoadingPages(true);
     try {
       const data = await analyticsApi.getTrackedPages();
       const pageList = data.pages || [];
@@ -29,6 +30,7 @@ export function useHeatmap(initialUrl = '', autoRefreshInterval = 0) {
   // Load clicks for the selected URL
   const fetchClicks = useCallback(async () => {
     if (!selectedUrl) return;
+    setLoadingClicks(true);
     try {
       const data = await analyticsApi.getHeatmapClicks(selectedUrl);
       setClickData(data);
@@ -41,26 +43,12 @@ export function useHeatmap(initialUrl = '', autoRefreshInterval = 0) {
   }, [selectedUrl]);
 
   useEffect(() => {
-    setLoadingPages(true);
     fetchPages();
   }, [fetchPages]);
 
   useEffect(() => {
-    if (!autoRefreshInterval || autoRefreshInterval <= 0) return;
-    const timer = setInterval(fetchPages, autoRefreshInterval * 2);
-    return () => clearInterval(timer);
-  }, [autoRefreshInterval, fetchPages]);
-
-  useEffect(() => {
-    setLoadingClicks(true);
     fetchClicks();
   }, [fetchClicks]);
-
-  useEffect(() => {
-    if (!autoRefreshInterval || autoRefreshInterval <= 0) return;
-    const timer = setInterval(fetchClicks, autoRefreshInterval);
-    return () => clearInterval(timer);
-  }, [autoRefreshInterval, fetchClicks]);
 
   return {
     pages,
