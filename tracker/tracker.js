@@ -24,23 +24,35 @@
   // --- Dynamic Endpoint Resolution ---
   function resolveDefaultEndpoint() {
     if (typeof window !== 'undefined' && window.location) {
-      // If loaded on a static server, point to port 5000 on the same host
-      const port = window.location.port === '5000' ? '' : ':5000';
-      return window.location.protocol + '//' + window.location.hostname + port + '/api/events';
+      const hostname = window.location.hostname;
+      // If running locally, point to local Flask port 5000
+      if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        return window.location.protocol + '//' + hostname + ':5000/api/events';
+      }
+      // If running on Render or any cloud host, use origin /api/events without port 5000
+      if (hostname.includes('onrender.com')) {
+        return window.location.origin + '/api/events';
+      }
+      return 'https://casual-funnel-r1.onrender.com/api/events';
     }
-    return 'http://localhost:5000/api/events';
+    return 'https://casual-funnel-r1.onrender.com/api/events';
   }
 
   const currentScript = document.currentScript;
+  const rawScriptEndpoint = currentScript && currentScript.getAttribute('data-endpoint');
+  // Discard localhost endpoint if running in the cloud
+  const isCloudHost = typeof window !== 'undefined' && !['localhost', '127.0.0.1'].includes(window.location.hostname);
+  const scriptEndpoint = (isCloudHost && rawScriptEndpoint && rawScriptEndpoint.includes('localhost')) ? null : rawScriptEndpoint;
+
   const defaults = {
-    endpoint: (currentScript && currentScript.getAttribute('data-endpoint')) ||
-              (typeof window !== 'undefined' && window.CF_ENDPOINT) ||
+    endpoint: (typeof window !== 'undefined' && window.CF_ENDPOINT) ||
+              scriptEndpoint ||
               resolveDefaultEndpoint(),
     sessionTimeoutMs: 30 * 60 * 1000, // 30 minutes inactivity timeout
-    flushIntervalMs: 2000,             // Batch flush every 2 seconds
-    maxBatchSize: 10,                  // Immediate flush if 10 events queued
+    flushIntervalMs: 1000,             // Batch flush every 1 second for fast feedback
+    maxBatchSize: 5,                   // Flush quickly
     maxQueueCap: 50,                   // Prevent unbounded memory growth on disconnect
-    debug: false
+    debug: true
   };
 
   const config = Object.assign({}, defaults, (typeof window !== 'undefined' && window.CF_CONFIG) || {});
