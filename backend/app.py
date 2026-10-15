@@ -17,17 +17,11 @@ def create_app():
     app.config['MAX_CONTENT_LENGTH'] = Config.MAX_CONTENT_LENGTH
 
     # 2. Initialize extensions
-    # Ingestion endpoints allow public origins; analytics endpoints restrict to dashboard origins in production
-    dashboard_origins = ["*"] if Config.DEBUG else Config.ALLOWED_DASHBOARD_ORIGINS
+    # Allow cross-origin requests for all API routes (Vercel frontend, local dev, beacons)
     cors.init_app(app, resources={
-        r"/api/events*": {
-            "origins": "*",
-            "methods": ["POST", "OPTIONS"],
-            "allow_headers": ["Content-Type"]
-        },
         r"/api/*": {
-            "origins": dashboard_origins,
-            "methods": ["GET", "OPTIONS"],
+            "origins": "*",
+            "methods": ["GET", "POST", "OPTIONS"],
             "allow_headers": ["Content-Type", "Authorization", "X-API-Key"]
         }
     })
