@@ -58,15 +58,22 @@ export default function Header({ activeTab, onTabChange, autoRefresh, onToggleAu
             />
             Live Polling (5s)
           </label>
-          <a
-            href="http://localhost:5000/demo/index.html"
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200/60 transition-colors"
-          >
-            Live Storefront
-            <ExternalLink className="w-3.5 h-3.5" />
-          </a>
+          {(() => {
+            const demoStoreUrl = (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app'))
+              ? 'https://casual-funnel-r1.onrender.com/demo/index.html'
+              : (import.meta.env?.VITE_API_BASE_URL ? `${import.meta.env.VITE_API_BASE_URL.replace(/\/$/, '')}/demo/index.html` : 'http://localhost:5000/demo/index.html');
+            return (
+              <a
+                href={demoStoreUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200/60 transition-colors"
+              >
+                Live Storefront
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            );
+          })()}
         </div>
 
       </div>
