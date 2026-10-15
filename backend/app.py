@@ -19,7 +19,16 @@ def create_app():
     # 2. Initialize extensions
     cors.init_app(app, resources={r"/*": {"origins": "*"}})
 
-    # Explicit global CORS headers for preflights & all responses
+    # Explicit global CORS preflight handler & headers
+    @app.before_request
+    def handle_preflight():
+        if request.method == "OPTIONS":
+            response = app.make_default_options_response()
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-API-Key'
+            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+            return response
+
     @app.after_request
     def set_cors_headers(response):
         response.headers['Access-Control-Allow-Origin'] = '*'
