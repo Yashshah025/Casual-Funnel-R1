@@ -9,9 +9,9 @@ import { AlertCircle } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('sessions');
-  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
 
-  const pollInterval = autoRefresh ? 5000 : 0;
+  const pollInterval = autoRefresh ? 3000 : 0;
   const { overview, loading: overviewLoading, error: overviewError, refetch: refetchOverview } = useOverview(pollInterval);
   const {
     sessions,
@@ -76,7 +76,7 @@ export default function App() {
             onRefresh={handleRefreshAll}
           />
         ) : (
-          <HeatmapView />
+          <HeatmapView pollInterval={pollInterval} />
         )}
       </main>
 
