@@ -21,10 +21,10 @@ class Config:
         raise ValueError("CRITICAL: ADMIN_API_KEY environment variable is required in production mode.")
 
     # Ingestion rate limits (per IP)
-    INGESTION_RATE_LIMIT = os.getenv("INGESTION_RATE_LIMIT", "120 per minute")
+    INGESTION_RATE_LIMIT = os.getenv("INGESTION_RATE_LIMIT", "1000 per minute")
     
     # Analytics read rate limits
-    ANALYTICS_RATE_LIMIT = os.getenv("ANALYTICS_RATE_LIMIT", "60 per minute")
+    ANALYTICS_RATE_LIMIT = os.getenv("ANALYTICS_RATE_LIMIT", "300 per minute")
     
     # Rate limiter storage (Memory in dev; Redis in multi-worker production)
     RATELIMIT_STORAGE_URI = os.getenv("RATELIMIT_STORAGE_URI", "memory://")

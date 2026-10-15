@@ -6,7 +6,7 @@ from flask_caching import Cache
 cors = CORS()
 limiter = Limiter(
     key_func=get_remote_address,
-    default_limits=["300 per hour"],
+    default_limits=["10000 per hour", "1000 per minute"],
     storage_uri="memory://"
 )
 cache = Cache()

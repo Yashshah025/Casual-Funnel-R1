@@ -29,8 +29,8 @@
       if (hostname === 'localhost' || hostname === '127.0.0.1') {
         return window.location.protocol + '//' + hostname + ':5000/api/events';
       }
-      // If running on Render or any cloud host, use origin /api/events without port 5000
-      if (hostname.includes('onrender.com')) {
+      // If running on Render or Vercel, use same-origin /api/events
+      if (hostname.includes('onrender.com') || hostname.includes('vercel.app')) {
         return window.location.origin + '/api/events';
       }
       return 'https://casual-funnel-r1.onrender.com/api/events';

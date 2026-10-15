@@ -42,8 +42,10 @@ class EventRepository:
 
     def find_clicks_by_url(self, url):
         """Find click events for a specific URL."""
+        url_clean = url.strip()
+        url_alt = url_clean[:-1] if url_clean.endswith('/') else (url_clean + '/')
         query = {
-            "url": url,
+            "url": {"$in": [url_clean, url_alt]},
             "event_type": "click",
             "coordinates": {"$ne": None}
         }

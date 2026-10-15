@@ -1,6 +1,18 @@
 {
   "rewrites": [
     {
+      "source": "/api/:match*",
+      "destination": "https://casual-funnel-r1.onrender.com/api/:match*"
+    },
+    {
+      "source": "/demo/:match*",
+      "destination": "https://casual-funnel-r1.onrender.com/demo/:match*"
+    },
+    {
+      "source": "/tracker.js",
+      "destination": "https://casual-funnel-r1.onrender.com/tracker.js"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

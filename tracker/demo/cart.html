@@ -7,9 +7,9 @@
   <link rel="stylesheet" href="style.css">
   <!-- Injected Tracker Script -->
   <script>
-    window.CF_ENDPOINT = (window.location.hostname === 'localhost' && window.location.port === '5000')
-      ? 'http://localhost:5000/api/events'
-      : 'https://casual-funnel-r1.onrender.com/api/events';
+    window.CF_ENDPOINT = (['localhost', '127.0.0.1'].includes(window.location.hostname))
+      ? `${window.location.protocol}//${window.location.hostname}:5000/api/events`
+      : `${window.location.origin}/api/events`;
   </script>
   <script src="../tracker.js"></script>
 </head>

@@ -1,5 +1,6 @@
 import os
-from flask import Flask, send_from_directory, request
+from flask import Flask, send_from_directory, request, redirect
+from werkzeug.middleware.proxy_fix import ProxyFix
 from config import Config
 from extensions import cors, limiter, cache
 from database.connection import mongo_manager
@@ -12,6 +13,9 @@ from core.logger import logger
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
+
+    # Trust standard reverse proxy headers (Render, Cloudflare, Nginx)
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
     # 1. Enforce bounded payload limit (Config.MAX_CONTENT_LENGTH)
     app.config['MAX_CONTENT_LENGTH'] = Config.MAX_CONTENT_LENGTH
@@ -56,9 +60,10 @@ def create_app():
     @app.route('/tracker.js', methods=['GET'])
     def serve_tracker():
         response = send_from_directory(tracker_dir, 'tracker.js')
-        response.headers['Cache-Control'] = 'public, max-age=600'
+        response.headers['Cache-Control'] = 'no-cache, must-revalidate, max-age=0'
         return response
 
+    @app.route('/demo', methods=['GET'])
     @app.route('/demo/', methods=['GET'])
     @app.route('/demo/<path:filename>', methods=['GET'])
     def serve_demo(filename='index.html'):
